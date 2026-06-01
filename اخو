@@ -11,6 +11,7 @@ local EventRemotes  = ReplicatedStorage:WaitForChild("EventRemotes")
 local RainRemotes   = ReplicatedStorage:WaitForChild("RainRemotes")
 
 local D            = ZombieRemotes:WaitForChild("ZombieDamage")
+local HitRemote    = ZombieRemotes:WaitForChild("ZombieHit")
 local ShardCollect = EventRemotes:WaitForChild("GalacticShardCollect")
 local ShardDrop    = EventRemotes:WaitForChild("GalacticShardDrop")
 local RainCollect  = RainRemotes:WaitForChild("RainCollect")
@@ -41,7 +42,7 @@ badge.Size = UDim2.new(0, 90, 0, 36)
 badge.Position = UDim2.new(0, 16, 0.5, -18)
 badge.BackgroundColor3 = Color3.fromRGB(12, 12, 18)
 badge.BorderSizePixel = 0
-badge.Text = "أخو 🟣"
+badge.Text = "اخو لا اسامة 🟣"
 badge.TextColor3 = Color3.fromRGB(200, 160, 255)
 badge.Font = Enum.Font.GothamBold
 badge.TextSize = 14
@@ -135,10 +136,28 @@ local function goToSafeZone()
     hrp.CFrame = CFrame.new(safePos)
 end
 
+local function lockCharacter()
+    local char = L.Character
+    if not char then return end
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    if hum then
+        hum.HipHeight = 25
+        pcall(function() hum.MaxHealth = math.huge end)
+        pcall(function() hum.Health    = math.huge end)
+    end
+    if hrp and hrp.Position.Y < -30 and safePos then
+        hrp.CFrame = CFrame.new(safePos)
+    end
+end
+
 local function onSpawn()
-    task.wait(1)
+    task.wait(0.5)
+    safePos = findSafeZone()
     applyFloat()
     goToSafeZone()
+    task.wait(1)
+    lockCharacter()
 end
 
 if L.Character then task.spawn(onSpawn) end
@@ -147,29 +166,85 @@ L.CharacterAdded:Connect(onSpawn)
 RunService.Heartbeat:Connect(function()
     local char = L.Character
     if not char then return end
+    local hum = char:FindFirstChildOfClass("Humanoid")
     local hrp = char:FindFirstChild("HumanoidRootPart")
-    if hrp and hrp.Position.Y < -80 and safePos then
-        hrp.CFrame = CFrame.new(safePos)
+    if hum then
+        if hum.HipHeight < 25 then hum.HipHeight = 25 end
+        pcall(function()
+            if hum.Health < hum.MaxHealth * 0.5 then
+                hum.Health = hum.MaxHealth
+            end
+        end)
+    end
+    if hrp then
+        if hrp.Position.Y < -30 and safePos then
+            hrp.CFrame = CFrame.new(safePos)
+        end
     end
 end)
 
 task.spawn(function()
     local counter = 0
     while true do
-        if not Z then task.wait(0.3) continue end
+        if not Z then task.wait(0.1) continue end
         counter = counter + 1
         applyFloat()
+
+        local char = L.Character
+        local hrp  = char and char:FindFirstChild("HumanoidRootPart")
+        local pos  = hrp and hrp.Position or Vector3.new(0, 0, 0)
+
         for id, data in pairs(Z) do
             if data and not data.IsDying and data.Health > 0 then
-                pcall(D.FireServer, D, id, math.huge)
+                local zpos = data.CurrentPosition or pos
+                pcall(D.FireServer,         D,          id, math.huge)
+                pcall(HitRemote.FireServer, HitRemote, "WorldEnder", id, zpos)
+                pcall(D.FireServer,         D,          id, math.huge)
             end
         end
-        if counter % 14 == 0 then
-            task.wait(1.6 + math.random() * 0.6)
+
+        if counter % 20 == 0 then
+            task.wait(0.8 + math.random() * 0.3)
             counter = 0
         else
-            task.wait(0.13 + math.random() * 0.07)
+            task.wait(0.02 + math.random() * 0.01)
         end
+    end
+end)
+
+local lastEquipped = nil
+
+local function getEquippedTool()
+    local char = L.Character
+    if not char then return nil end
+    for _, v in ipairs(char:GetChildren()) do
+        if v:IsA("Tool") then return v end
+    end
+    return nil
+end
+
+local function autoEquip()
+    local char = L.Character
+    if not char then return end
+    local tool = getEquippedTool()
+    if tool then
+        lastEquipped = tool
+        return
+    end
+    local bp = L:FindFirstChild("Backpack")
+    if not bp then return end
+    local target = lastEquipped and bp:FindFirstChild(lastEquipped.Name)
+                or bp:FindFirstChildOfClass("Tool")
+    if target then
+        if not lastEquipped then lastEquipped = target end
+        target.Parent = char
+    end
+end
+
+task.spawn(function()
+    while true do
+        task.wait(0.4)
+        autoEquip()
     end
 end)
 
@@ -195,14 +270,14 @@ local mouse = L:GetMouse()
 
 task.spawn(function()
     while true do
-        task.wait(25 + math.random() * 10)
+        task.wait(18 + math.random() * 7)
 
         pcall(function()
             local cam = workspace.CurrentCamera
             if cam then
                 local cf = cam.CFrame
-                local rx = (math.random() - 0.5) * 0.003
-                local ry = (math.random() - 0.5) * 0.003
+                local rx = (math.random() - 0.5) * 0.004
+                local ry = (math.random() - 0.5) * 0.004
                 cam.CFrame = cf * CFrame.Angles(rx, ry, 0)
             end
         end)
@@ -210,27 +285,27 @@ task.spawn(function()
         pcall(function()
             local cx = mouse.X
             local cy = mouse.Y
-            local dx = math.random(-3, 3)
-            local dy = math.random(-3, 3)
+            local dx = math.random(-5, 5)
+            local dy = math.random(-5, 5)
             VIM:SendMouseMoveEvent(cx + dx, cy + dy, game)
-            task.wait(0.08)
+            task.wait(0.07)
             VIM:SendMouseMoveEvent(cx, cy, game)
         end)
 
         pcall(function()
-            task.wait(0.05)
+            task.wait(0.03)
             VIM:SendKeyEvent(true,  Enum.KeyCode.W, false, game)
-            task.wait(0.06 + math.random() * 0.04)
+            task.wait(0.05 + math.random() * 0.05)
             VIM:SendKeyEvent(false, Enum.KeyCode.W, false, game)
         end)
 
         pcall(function()
-            task.wait(math.random() * 0.3)
+            task.wait(math.random() * 0.2)
             local char = L.Character
             local hum  = char and char:FindFirstChildOfClass("Humanoid")
             if hum then
                 hum.Jump = true
-                task.wait(0.1)
+                task.wait(0.08)
                 hum.Jump = false
             end
         end)
@@ -239,7 +314,7 @@ end)
 
 task.spawn(function()
     while true do
-        task.wait(55 + math.random() * 10)
+        task.wait(40 + math.random() * 8)
         pcall(function()
             local tt = UIS:FindFirstChildOfClass("TouchTransmitter")
             if tt then
@@ -262,7 +337,7 @@ task.spawn(function()
         return game:GetService("StarterGui")
     end)
     while true do
-        task.wait(40 + math.random() * 15)
+        task.wait(30 + math.random() * 10)
         pcall(function()
             if ok2 and StarterGui then
                 StarterGui:SetCore("ResetButtonCallback", true)
@@ -271,4 +346,17 @@ task.spawn(function()
     end
 end)
 
-print("[OXYO] أخو — loaded ✅")
+task.spawn(function()
+    while true do
+        task.wait(12 + math.random() * 5)
+        pcall(function()
+            local char = L.Character
+            local hum  = char and char:FindFirstChildOfClass("Humanoid")
+            if hum then
+                hum.WalkSpeed = hum.WalkSpeed
+            end
+        end)
+    end
+end)
+
+print("[OXYO] La Osama - loaded ✅")
