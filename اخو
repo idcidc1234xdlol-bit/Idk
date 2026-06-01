@@ -1,0 +1,274 @@
+local Players           = game:GetService("Players")
+local RunService        = game:GetService("RunService")
+local TweenService      = game:GetService("TweenService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local UserInputService  = game:GetService("UserInputService")
+local L                 = Players.LocalPlayer
+local LG                = L:WaitForChild("PlayerGui")
+
+local ZombieRemotes = ReplicatedStorage:WaitForChild("ZombieRemotes")
+local EventRemotes  = ReplicatedStorage:WaitForChild("EventRemotes")
+local RainRemotes   = ReplicatedStorage:WaitForChild("RainRemotes")
+
+local D            = ZombieRemotes:WaitForChild("ZombieDamage")
+local ShardCollect = EventRemotes:WaitForChild("GalacticShardCollect")
+local ShardDrop    = EventRemotes:WaitForChild("GalacticShardDrop")
+local RainCollect  = RainRemotes:WaitForChild("RainCollect")
+local RainDrop     = RainRemotes:WaitForChild("RainDrop")
+
+local Z
+local ok, res = pcall(function()
+    return require(L.PlayerScripts.Controllers.ZombieClient).Zombies
+end)
+if ok and type(res) == "table" then Z = res end
+if not Z then
+    for _, v in pairs(getgc(true)) do
+        if type(v) == "table" and rawget(v, "Zombies") and rawget(v, "ZombieModels") then
+            Z = v.Zombies
+            break
+        end
+    end
+end
+
+local gui = Instance.new("ScreenGui")
+gui.Name = "OxyoArena"
+gui.ResetOnSpawn = false
+gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+gui.Parent = LG
+
+local badge = Instance.new("TextButton")
+badge.Size = UDim2.new(0, 90, 0, 36)
+badge.Position = UDim2.new(0, 16, 0.5, -18)
+badge.BackgroundColor3 = Color3.fromRGB(12, 12, 18)
+badge.BorderSizePixel = 0
+badge.Text = "أخو 🟣"
+badge.TextColor3 = Color3.fromRGB(200, 160, 255)
+badge.Font = Enum.Font.GothamBold
+badge.TextSize = 14
+badge.Parent = gui
+
+local bc = Instance.new("UICorner")
+bc.CornerRadius = UDim.new(0, 8)
+bc.Parent = badge
+
+local bs = Instance.new("UIStroke")
+bs.Color = Color3.fromRGB(138, 43, 226)
+bs.Thickness = 1.5
+bs.Parent = badge
+
+local dragging, dragStart, startPos
+badge.InputBegan:Connect(function(inp)
+    if inp.UserInputType == Enum.UserInputType.MouseButton1
+    or inp.UserInputType == Enum.UserInputType.Touch then
+        dragging  = true
+        dragStart = inp.Position
+        startPos  = badge.Position
+    end
+end)
+badge.InputEnded:Connect(function(inp)
+    if inp.UserInputType == Enum.UserInputType.MouseButton1
+    or inp.UserInputType == Enum.UserInputType.Touch then
+        dragging = false
+    end
+end)
+UserInputService.InputChanged:Connect(function(inp)
+    if dragging and (inp.UserInputType == Enum.UserInputType.MouseMovement
+    or inp.UserInputType == Enum.UserInputType.Touch) then
+        local d = inp.Position - dragStart
+        badge.Position = UDim2.new(
+            startPos.X.Scale, startPos.X.Offset + d.X,
+            startPos.Y.Scale, startPos.Y.Offset + d.Y
+        )
+    end
+end)
+
+task.spawn(function()
+    local bright = true
+    while true do
+        task.wait(1.4)
+        bright = not bright
+        TweenService:Create(badge, TweenInfo.new(0.7), {
+            TextColor3 = bright
+                and Color3.fromRGB(200, 160, 255)
+                or  Color3.fromRGB(120, 60, 180)
+        }):Play()
+        TweenService:Create(bs, TweenInfo.new(0.7), {
+            Color = bright
+                and Color3.fromRGB(138, 43, 226)
+                or  Color3.fromRGB(60, 20, 100)
+        }):Play()
+    end
+end)
+
+local safePos = nil
+
+local function applyFloat()
+    local char = L.Character
+    if not char then return end
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    if hum then hum.HipHeight = 25 end
+end
+
+local function findSafeZone()
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        if obj:IsA("SpawnLocation") then
+            return obj.Position + Vector3.new(0, 6, 0)
+        end
+    end
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        if obj:IsA("BasePart") then
+            local n = obj.Name:lower()
+            if n:find("safe") or n:find("base") or n:find("spawn") then
+                return obj.Position + Vector3.new(0, 6, 0)
+            end
+        end
+    end
+    return Vector3.new(0, 10, 0)
+end
+
+local function goToSafeZone()
+    local char = L.Character
+    if not char then return end
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    if not hrp then return end
+    safePos = findSafeZone()
+    hrp.CFrame = CFrame.new(safePos)
+end
+
+local function onSpawn()
+    task.wait(1)
+    applyFloat()
+    goToSafeZone()
+end
+
+if L.Character then task.spawn(onSpawn) end
+L.CharacterAdded:Connect(onSpawn)
+
+RunService.Heartbeat:Connect(function()
+    local char = L.Character
+    if not char then return end
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    if hrp and hrp.Position.Y < -80 and safePos then
+        hrp.CFrame = CFrame.new(safePos)
+    end
+end)
+
+task.spawn(function()
+    local counter = 0
+    while true do
+        if not Z then task.wait(0.3) continue end
+        counter = counter + 1
+        applyFloat()
+        for id, data in pairs(Z) do
+            if data and not data.IsDying and data.Health > 0 then
+                pcall(D.FireServer, D, id, math.huge)
+            end
+        end
+        if counter % 14 == 0 then
+            task.wait(1.6 + math.random() * 0.6)
+            counter = 0
+        else
+            task.wait(0.13 + math.random() * 0.07)
+        end
+    end
+end)
+
+ShardDrop.OnClientEvent:Connect(function(shardData)
+    local id
+    if type(shardData) == "number" then id = shardData
+    elseif type(shardData) == "table" then id = shardData.ZombieId or shardData.Id or shardData[1]
+    elseif type(shardData) == "userdata" then id = shardData:GetAttribute("ZombieId") or shardData:GetAttribute("Id") end
+    pcall(ShardCollect.FireServer, ShardCollect, id or shardData)
+end)
+
+RainDrop.OnClientEvent:Connect(function(rainData)
+    local id
+    if type(rainData) == "number" then id = rainData
+    elseif type(rainData) == "table" then id = rainData.RainId or rainData.Id or rainData[1]
+    elseif type(rainData) == "userdata" then id = rainData:GetAttribute("RainId") or rainData:GetAttribute("Id") end
+    pcall(RainCollect.FireServer, RainCollect, id or rainData)
+end)
+
+local VIM   = game:GetService("VirtualInputManager")
+local UIS   = UserInputService
+local mouse = L:GetMouse()
+
+task.spawn(function()
+    while true do
+        task.wait(25 + math.random() * 10)
+
+        pcall(function()
+            local cam = workspace.CurrentCamera
+            if cam then
+                local cf = cam.CFrame
+                local rx = (math.random() - 0.5) * 0.003
+                local ry = (math.random() - 0.5) * 0.003
+                cam.CFrame = cf * CFrame.Angles(rx, ry, 0)
+            end
+        end)
+
+        pcall(function()
+            local cx = mouse.X
+            local cy = mouse.Y
+            local dx = math.random(-3, 3)
+            local dy = math.random(-3, 3)
+            VIM:SendMouseMoveEvent(cx + dx, cy + dy, game)
+            task.wait(0.08)
+            VIM:SendMouseMoveEvent(cx, cy, game)
+        end)
+
+        pcall(function()
+            task.wait(0.05)
+            VIM:SendKeyEvent(true,  Enum.KeyCode.W, false, game)
+            task.wait(0.06 + math.random() * 0.04)
+            VIM:SendKeyEvent(false, Enum.KeyCode.W, false, game)
+        end)
+
+        pcall(function()
+            task.wait(math.random() * 0.3)
+            local char = L.Character
+            local hum  = char and char:FindFirstChildOfClass("Humanoid")
+            if hum then
+                hum.Jump = true
+                task.wait(0.1)
+                hum.Jump = false
+            end
+        end)
+    end
+end)
+
+task.spawn(function()
+    while true do
+        task.wait(55 + math.random() * 10)
+        pcall(function()
+            local tt = UIS:FindFirstChildOfClass("TouchTransmitter")
+            if tt then
+                tt:Transmit(Vector2.new(
+                    math.random(100, 700),
+                    math.random(100, 500)
+                ), Enum.UserInputType.Touch, Enum.UserInputState.Begin, game)
+                task.wait(0.05)
+                tt:Transmit(Vector2.new(
+                    math.random(100, 700),
+                    math.random(100, 500)
+                ), Enum.UserInputType.Touch, Enum.UserInputState.End, game)
+            end
+        end)
+    end
+end)
+
+task.spawn(function()
+    local ok2, StarterGui = pcall(function()
+        return game:GetService("StarterGui")
+    end)
+    while true do
+        task.wait(40 + math.random() * 15)
+        pcall(function()
+            if ok2 and StarterGui then
+                StarterGui:SetCore("ResetButtonCallback", true)
+            end
+        end)
+    end
+end)
+
+print("[OXYO] أخو — loaded ✅")
