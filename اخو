@@ -11,7 +11,6 @@ local EventRemotes  = ReplicatedStorage:WaitForChild("EventRemotes")
 local RainRemotes   = ReplicatedStorage:WaitForChild("RainRemotes")
 
 local D            = ZombieRemotes:WaitForChild("ZombieDamage")
-local HitRemote    = ZombieRemotes:WaitForChild("ZombieHit")
 local ShardCollect = EventRemotes:WaitForChild("GalacticShardCollect")
 local ShardDrop    = EventRemotes:WaitForChild("GalacticShardDrop")
 local RainCollect  = RainRemotes:WaitForChild("RainCollect")
@@ -41,96 +40,60 @@ local Flags = {
     AutoEquip   = false,
 }
 
-local KillAuraSpeed = 0.015
-local safePos       = nil
-local lastEquipped  = nil
+local lastEquipped = nil
 
-local function findSafeZone()
-    for _, obj in ipairs(workspace:GetDescendants()) do
-        if obj:IsA("SpawnLocation") then
-            return obj.Position + Vector3.new(0, 6, 0)
-        end
-    end
-    for _, obj in ipairs(workspace:GetDescendants()) do
-        if obj:IsA("BasePart") then
-            local n = obj.Name:lower()
-            if n:find("safe") or n:find("base") or n:find("spawn") then
-                return obj.Position + Vector3.new(0, 6, 0)
-            end
-        end
-    end
-    return Vector3.new(0, 10, 0)
+local function applyFloat()
+    local char = L.Character
+    local hum  = char and char:FindFirstChildOfClass("Humanoid")
+    if hum then hum.HipHeight = 25 end
 end
 
-if L.Character then safePos = findSafeZone() end
 L.CharacterAdded:Connect(function()
-    task.wait(0.5)
-    safePos = findSafeZone()
+    task.wait(1)
+    if Flags.Float then applyFloat() end
 end)
 
-RunService.Heartbeat:Connect(function()
-    local char = L.Character
-    if not char then return end
-    local hum = char:FindFirstChildOfClass("Humanoid")
-    local hrp = char:FindFirstChild("HumanoidRootPart")
-
-    if Flags.Float and hum then
-        if hum.HipHeight < 25 then hum.HipHeight = 25 end
-        if hrp and safePos and hrp.Position.Y < -30 then
-            hrp.CFrame = CFrame.new(safePos)
-        end
-    end
-
-
-end)
-
+-- Kill Aura: نفس منطق V1 بالظبط
 task.spawn(function()
-    while true do
+    while task.wait(0.2) do
+        if Flags.Float then applyFloat() end
+
         if Flags.KillAura and Z then
-            local char = L.Character
-            local hrp  = char and char:FindFirstChild("HumanoidRootPart")
-            local pos  = hrp and hrp.Position or Vector3.new(0, 0, 0)
             for id, data in pairs(Z) do
                 if data and not data.IsDying and data.Health > 0 then
-                    local zpos = data.CurrentPosition or pos
-                    pcall(D.FireServer,         D,         id, math.huge)
-                    pcall(HitRemote.FireServer, HitRemote, "WorldEnder", id, zpos)
-                    pcall(D.FireServer,         D,         id, math.huge)
+                    D:FireServer(id, math.huge)
                 end
             end
-            task.wait(KillAuraSpeed)
-        else
-            task.wait(0.1)
         end
     end
 end)
 
+-- Auto Equip
 task.spawn(function()
     while true do
-        if Flags.AutoEquip then
-            local char = L.Character
-            if char then
-                local hasTool = false
-                for _, v in ipairs(char:GetChildren()) do
-                    if v:IsA("Tool") then lastEquipped = v hasTool = true break end
-                end
-                if not hasTool then
-                    local bp = L:FindFirstChild("Backpack")
-                    if bp then
-                        local target = lastEquipped and bp:FindFirstChild(lastEquipped.Name)
-                                    or bp:FindFirstChildOfClass("Tool")
-                        if target then
-                            if not lastEquipped then lastEquipped = target end
-                            target.Parent = char
-                        end
-                    end
+        task.wait(0.3)
+        if not Flags.AutoEquip then continue end
+        local char = L.Character
+        if not char then continue end
+        local hasTool = false
+        for _, v in ipairs(char:GetChildren()) do
+            if v:IsA("Tool") then lastEquipped = v hasTool = true break end
+        end
+        if not hasTool then
+            local bp = L:FindFirstChild("Backpack")
+            if bp then
+                local target = lastEquipped and bp:FindFirstChild(lastEquipped.Name)
+                            or bp:FindFirstChildOfClass("Tool")
+                if target then
+                    if not lastEquipped then lastEquipped = target end
+                    target.Parent = char
                 end
             end
         end
-        task.wait(0.3)
     end
 end)
 
+-- Auto Collect
 ShardDrop.OnClientEvent:Connect(function(shardData)
     if not Flags.AutoCollect then return end
     local id
@@ -149,54 +112,54 @@ RainDrop.OnClientEvent:Connect(function(rainData)
     pcall(RainCollect.FireServer, RainCollect, id or rainData)
 end)
 
+-- Anti AFK
 task.spawn(function()
     local ok2, SG = pcall(function() return game:GetService("StarterGui") end)
     while true do
-        if Flags.AntiAFK then
-            task.wait(16 + math.random() * 6)
-            pcall(function()
-                local cam = workspace.CurrentCamera
-                if cam then
-                    cam.CFrame = cam.CFrame * CFrame.Angles(
-                        (math.random()-0.5)*0.004,
-                        (math.random()-0.5)*0.004, 0)
-                end
-            end)
-            pcall(function()
-                local cx, cy = mouse.X, mouse.Y
-                VIM:SendMouseMoveEvent(cx+math.random(-5,5), cy+math.random(-5,5), game)
-                task.wait(0.06)
-                VIM:SendMouseMoveEvent(cx, cy, game)
-            end)
-            pcall(function()
-                VIM:SendKeyEvent(true,  Enum.KeyCode.W, false, game)
-                task.wait(0.05+math.random()*0.04)
-                VIM:SendKeyEvent(false, Enum.KeyCode.W, false, game)
-            end)
-            pcall(function()
-                local char = L.Character
-                local hum  = char and char:FindFirstChildOfClass("Humanoid")
-                if hum then hum.Jump = true task.wait(0.07) hum.Jump = false end
-            end)
-            pcall(function()
-                local tt = UserInputService:FindFirstChildOfClass("TouchTransmitter")
-                if tt then
-                    tt:Transmit(Vector2.new(math.random(100,700),math.random(100,500)),
-                        Enum.UserInputType.Touch, Enum.UserInputState.Begin, game)
-                    task.wait(0.04)
-                    tt:Transmit(Vector2.new(math.random(100,700),math.random(100,500)),
-                        Enum.UserInputType.Touch, Enum.UserInputState.End, game)
-                end
-            end)
-            pcall(function()
-                if ok2 and SG then SG:SetCore("ResetButtonCallback", true) end
-            end)
-        else
-            task.wait(1)
-        end
+        task.wait(1)
+        if not Flags.AntiAFK then continue end
+        task.wait(16 + math.random() * 6)
+        pcall(function()
+            local cam = workspace.CurrentCamera
+            if cam then
+                cam.CFrame = cam.CFrame * CFrame.Angles(
+                    (math.random()-0.5)*0.004,
+                    (math.random()-0.5)*0.004, 0)
+            end
+        end)
+        pcall(function()
+            local cx, cy = mouse.X, mouse.Y
+            VIM:SendMouseMoveEvent(cx+math.random(-5,5), cy+math.random(-5,5), game)
+            task.wait(0.06)
+            VIM:SendMouseMoveEvent(cx, cy, game)
+        end)
+        pcall(function()
+            VIM:SendKeyEvent(true,  Enum.KeyCode.W, false, game)
+            task.wait(0.05+math.random()*0.04)
+            VIM:SendKeyEvent(false, Enum.KeyCode.W, false, game)
+        end)
+        pcall(function()
+            local char = L.Character
+            local hum  = char and char:FindFirstChildOfClass("Humanoid")
+            if hum then hum.Jump = true task.wait(0.07) hum.Jump = false end
+        end)
+        pcall(function()
+            local tt = UserInputService:FindFirstChildOfClass("TouchTransmitter")
+            if tt then
+                tt:Transmit(Vector2.new(math.random(100,700), math.random(100,500)),
+                    Enum.UserInputType.Touch, Enum.UserInputState.Begin, game)
+                task.wait(0.04)
+                tt:Transmit(Vector2.new(math.random(100,700), math.random(100,500)),
+                    Enum.UserInputType.Touch, Enum.UserInputState.End, game)
+            end
+        end)
+        pcall(function()
+            if ok2 and SG then SG:SetCore("ResetButtonCallback", true) end
+        end)
     end
 end)
 
+-- UI
 local Window = Rayfield:CreateWindow({
     Name            = "Oxyo | Survive Zombie Arena",
     LoadingTitle    = "Oxyo Hub",
@@ -215,16 +178,6 @@ Tab:CreateToggle({
     Callback     = function(v) Flags.KillAura = v end,
 })
 
-Tab:CreateSlider({
-    Name         = "Kill Aura Speed",
-    Range        = {0.005, 0.1},
-    Increment    = 0.005,
-    Suffix       = "s",
-    CurrentValue = 0.015,
-    Flag         = "KillAuraSpeed",
-    Callback     = function(v) KillAuraSpeed = v end,
-})
-
 Tab:CreateToggle({
     Name         = "Auto Collect Shards",
     CurrentValue = false,
@@ -238,14 +191,15 @@ Tab:CreateToggle({
     Flag         = "Float",
     Callback     = function(v)
         Flags.Float = v
-        if not v then
+        if v then
+            applyFloat()
+        else
             local char = L.Character
             local hum  = char and char:FindFirstChildOfClass("Humanoid")
             if hum then hum.HipHeight = 2 end
         end
     end,
 })
-
 
 Tab:CreateToggle({
     Name         = "Anti AFK",
