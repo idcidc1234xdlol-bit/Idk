@@ -1,10 +1,10 @@
+local Rayfield = loadstring(game:HttpGet("https://sirius.menu/rayfield"))()
+
 local Players           = game:GetService("Players")
 local RunService        = game:GetService("RunService")
-local TweenService      = game:GetService("TweenService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local UserInputService  = game:GetService("UserInputService")
 local L                 = Players.LocalPlayer
-local LG                = L:WaitForChild("PlayerGui")
 
 local ZombieRemotes = ReplicatedStorage:WaitForChild("ZombieRemotes")
 local EventRemotes  = ReplicatedStorage:WaitForChild("EventRemotes")
@@ -16,6 +16,8 @@ local ShardCollect = EventRemotes:WaitForChild("GalacticShardCollect")
 local ShardDrop    = EventRemotes:WaitForChild("GalacticShardDrop")
 local RainCollect  = RainRemotes:WaitForChild("RainCollect")
 local RainDrop     = RainRemotes:WaitForChild("RainDrop")
+local VIM          = game:GetService("VirtualInputManager")
+local mouse        = L:GetMouse()
 
 local Z
 local ok, res = pcall(function()
@@ -31,84 +33,17 @@ if not Z then
     end
 end
 
-local gui = Instance.new("ScreenGui")
-gui.Name = "OxyoArena"
-gui.ResetOnSpawn = false
-gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-gui.Parent = LG
+local Flags = {
+    KillAura    = false,
+    AutoCollect = false,
+    Float       = false,
+    AntiAFK     = false,
+    AutoEquip   = false,
+}
 
-local badge = Instance.new("TextButton")
-badge.Size = UDim2.new(0, 90, 0, 36)
-badge.Position = UDim2.new(0, 16, 0.5, -18)
-badge.BackgroundColor3 = Color3.fromRGB(12, 12, 18)
-badge.BorderSizePixel = 0
-badge.Text = "اخو لا اسامة 🟣"
-badge.TextColor3 = Color3.fromRGB(200, 160, 255)
-badge.Font = Enum.Font.GothamBold
-badge.TextSize = 14
-badge.Parent = gui
-
-local bc = Instance.new("UICorner")
-bc.CornerRadius = UDim.new(0, 8)
-bc.Parent = badge
-
-local bs = Instance.new("UIStroke")
-bs.Color = Color3.fromRGB(138, 43, 226)
-bs.Thickness = 1.5
-bs.Parent = badge
-
-local dragging, dragStart, startPos
-badge.InputBegan:Connect(function(inp)
-    if inp.UserInputType == Enum.UserInputType.MouseButton1
-    or inp.UserInputType == Enum.UserInputType.Touch then
-        dragging  = true
-        dragStart = inp.Position
-        startPos  = badge.Position
-    end
-end)
-badge.InputEnded:Connect(function(inp)
-    if inp.UserInputType == Enum.UserInputType.MouseButton1
-    or inp.UserInputType == Enum.UserInputType.Touch then
-        dragging = false
-    end
-end)
-UserInputService.InputChanged:Connect(function(inp)
-    if dragging and (inp.UserInputType == Enum.UserInputType.MouseMovement
-    or inp.UserInputType == Enum.UserInputType.Touch) then
-        local d = inp.Position - dragStart
-        badge.Position = UDim2.new(
-            startPos.X.Scale, startPos.X.Offset + d.X,
-            startPos.Y.Scale, startPos.Y.Offset + d.Y
-        )
-    end
-end)
-
-task.spawn(function()
-    local bright = true
-    while true do
-        task.wait(1.4)
-        bright = not bright
-        TweenService:Create(badge, TweenInfo.new(0.7), {
-            TextColor3 = bright
-                and Color3.fromRGB(200, 160, 255)
-                or  Color3.fromRGB(120, 60, 180)
-        }):Play()
-        TweenService:Create(bs, TweenInfo.new(0.7), {
-            Color = bright
-                and Color3.fromRGB(138, 43, 226)
-                or  Color3.fromRGB(60, 20, 100)
-        }):Play()
-    end
-end)
-
-local safePos = nil
-
-local function applyFloat()
-    local char = L.Character
-    if not char then return end
-    local hum = char:FindFirstChildOfClass("Humanoid")
-    if hum then hum.HipHeight = 25 end
-end
+local KillAuraSpeed = 0.015
+local safePos       = nil
+local lastEquipped  = nil
 
 local function findSafeZone()
     for _, obj in ipairs(workspace:GetDescendants()) do
@@ -127,128 +62,77 @@ local function findSafeZone()
     return Vector3.new(0, 10, 0)
 end
 
-local function goToSafeZone()
-    local char = L.Character
-    if not char then return end
-    local hrp = char:FindFirstChild("HumanoidRootPart")
-    if not hrp then return end
-    safePos = findSafeZone()
-    hrp.CFrame = CFrame.new(safePos)
-end
-
-local function lockCharacter()
-    local char = L.Character
-    if not char then return end
-    local hum = char:FindFirstChildOfClass("Humanoid")
-    local hrp = char:FindFirstChild("HumanoidRootPart")
-    if hum then
-        hum.HipHeight = 25
-        pcall(function() hum.MaxHealth = math.huge end)
-        pcall(function() hum.Health    = math.huge end)
-    end
-    if hrp and hrp.Position.Y < -30 and safePos then
-        hrp.CFrame = CFrame.new(safePos)
-    end
-end
-
-local function onSpawn()
+if L.Character then safePos = findSafeZone() end
+L.CharacterAdded:Connect(function()
     task.wait(0.5)
     safePos = findSafeZone()
-    applyFloat()
-    goToSafeZone()
-    task.wait(1)
-    lockCharacter()
-end
-
-if L.Character then task.spawn(onSpawn) end
-L.CharacterAdded:Connect(onSpawn)
+end)
 
 RunService.Heartbeat:Connect(function()
     local char = L.Character
     if not char then return end
     local hum = char:FindFirstChildOfClass("Humanoid")
     local hrp = char:FindFirstChild("HumanoidRootPart")
-    if hum then
+
+    if Flags.Float and hum then
         if hum.HipHeight < 25 then hum.HipHeight = 25 end
-        pcall(function()
-            if hum.Health < hum.MaxHealth * 0.5 then
-                hum.Health = hum.MaxHealth
-            end
-        end)
-    end
-    if hrp then
-        if hrp.Position.Y < -30 and safePos then
+        if hrp and safePos and hrp.Position.Y < -30 then
             hrp.CFrame = CFrame.new(safePos)
         end
     end
+
+
 end)
 
 task.spawn(function()
-    local counter = 0
     while true do
-        if not Z then task.wait(0.1) continue end
-        counter = counter + 1
-        applyFloat()
+        if Flags.KillAura and Z then
+            local char = L.Character
+            local hrp  = char and char:FindFirstChild("HumanoidRootPart")
+            local pos  = hrp and hrp.Position or Vector3.new(0, 0, 0)
+            for id, data in pairs(Z) do
+                if data and not data.IsDying and data.Health > 0 then
+                    local zpos = data.CurrentPosition or pos
+                    pcall(D.FireServer,         D,         id, math.huge)
+                    pcall(HitRemote.FireServer, HitRemote, "WorldEnder", id, zpos)
+                    pcall(D.FireServer,         D,         id, math.huge)
+                end
+            end
+            task.wait(KillAuraSpeed)
+        else
+            task.wait(0.1)
+        end
+    end
+end)
 
-        local char = L.Character
-        local hrp  = char and char:FindFirstChild("HumanoidRootPart")
-        local pos  = hrp and hrp.Position or Vector3.new(0, 0, 0)
-
-        for id, data in pairs(Z) do
-            if data and not data.IsDying and data.Health > 0 then
-                local zpos = data.CurrentPosition or pos
-                pcall(D.FireServer,         D,          id, math.huge)
-                pcall(HitRemote.FireServer, HitRemote, "WorldEnder", id, zpos)
-                pcall(D.FireServer,         D,          id, math.huge)
+task.spawn(function()
+    while true do
+        if Flags.AutoEquip then
+            local char = L.Character
+            if char then
+                local hasTool = false
+                for _, v in ipairs(char:GetChildren()) do
+                    if v:IsA("Tool") then lastEquipped = v hasTool = true break end
+                end
+                if not hasTool then
+                    local bp = L:FindFirstChild("Backpack")
+                    if bp then
+                        local target = lastEquipped and bp:FindFirstChild(lastEquipped.Name)
+                                    or bp:FindFirstChildOfClass("Tool")
+                        if target then
+                            if not lastEquipped then lastEquipped = target end
+                            target.Parent = char
+                        end
+                    end
+                end
             end
         end
-
-        if counter % 20 == 0 then
-            task.wait(0.8 + math.random() * 0.3)
-            counter = 0
-        else
-            task.wait(0.02 + math.random() * 0.01)
-        end
-    end
-end)
-
-local lastEquipped = nil
-
-local function getEquippedTool()
-    local char = L.Character
-    if not char then return nil end
-    for _, v in ipairs(char:GetChildren()) do
-        if v:IsA("Tool") then return v end
-    end
-    return nil
-end
-
-local function autoEquip()
-    local char = L.Character
-    if not char then return end
-    local tool = getEquippedTool()
-    if tool then
-        lastEquipped = tool
-        return
-    end
-    local bp = L:FindFirstChild("Backpack")
-    if not bp then return end
-    local target = lastEquipped and bp:FindFirstChild(lastEquipped.Name)
-                or bp:FindFirstChildOfClass("Tool")
-    if target then
-        if not lastEquipped then lastEquipped = target end
-        target.Parent = char
-    end
-end
-
-task.spawn(function()
-    while true do
-        task.wait(0.4)
-        autoEquip()
+        task.wait(0.3)
     end
 end)
 
 ShardDrop.OnClientEvent:Connect(function(shardData)
+    if not Flags.AutoCollect then return end
     local id
     if type(shardData) == "number" then id = shardData
     elseif type(shardData) == "table" then id = shardData.ZombieId or shardData.Id or shardData[1]
@@ -257,6 +141,7 @@ ShardDrop.OnClientEvent:Connect(function(shardData)
 end)
 
 RainDrop.OnClientEvent:Connect(function(rainData)
+    if not Flags.AutoCollect then return end
     local id
     if type(rainData) == "number" then id = rainData
     elseif type(rainData) == "table" then id = rainData.RainId or rainData.Id or rainData[1]
@@ -264,99 +149,116 @@ RainDrop.OnClientEvent:Connect(function(rainData)
     pcall(RainCollect.FireServer, RainCollect, id or rainData)
 end)
 
-local VIM   = game:GetService("VirtualInputManager")
-local UIS   = UserInputService
-local mouse = L:GetMouse()
-
 task.spawn(function()
+    local ok2, SG = pcall(function() return game:GetService("StarterGui") end)
     while true do
-        task.wait(18 + math.random() * 7)
+        if Flags.AntiAFK then
+            task.wait(16 + math.random() * 6)
+            pcall(function()
+                local cam = workspace.CurrentCamera
+                if cam then
+                    cam.CFrame = cam.CFrame * CFrame.Angles(
+                        (math.random()-0.5)*0.004,
+                        (math.random()-0.5)*0.004, 0)
+                end
+            end)
+            pcall(function()
+                local cx, cy = mouse.X, mouse.Y
+                VIM:SendMouseMoveEvent(cx+math.random(-5,5), cy+math.random(-5,5), game)
+                task.wait(0.06)
+                VIM:SendMouseMoveEvent(cx, cy, game)
+            end)
+            pcall(function()
+                VIM:SendKeyEvent(true,  Enum.KeyCode.W, false, game)
+                task.wait(0.05+math.random()*0.04)
+                VIM:SendKeyEvent(false, Enum.KeyCode.W, false, game)
+            end)
+            pcall(function()
+                local char = L.Character
+                local hum  = char and char:FindFirstChildOfClass("Humanoid")
+                if hum then hum.Jump = true task.wait(0.07) hum.Jump = false end
+            end)
+            pcall(function()
+                local tt = UserInputService:FindFirstChildOfClass("TouchTransmitter")
+                if tt then
+                    tt:Transmit(Vector2.new(math.random(100,700),math.random(100,500)),
+                        Enum.UserInputType.Touch, Enum.UserInputState.Begin, game)
+                    task.wait(0.04)
+                    tt:Transmit(Vector2.new(math.random(100,700),math.random(100,500)),
+                        Enum.UserInputType.Touch, Enum.UserInputState.End, game)
+                end
+            end)
+            pcall(function()
+                if ok2 and SG then SG:SetCore("ResetButtonCallback", true) end
+            end)
+        else
+            task.wait(1)
+        end
+    end
+end)
 
-        pcall(function()
-            local cam = workspace.CurrentCamera
-            if cam then
-                local cf = cam.CFrame
-                local rx = (math.random() - 0.5) * 0.004
-                local ry = (math.random() - 0.5) * 0.004
-                cam.CFrame = cf * CFrame.Angles(rx, ry, 0)
-            end
-        end)
+local Window = Rayfield:CreateWindow({
+    Name            = "Oxyo | Survive Zombie Arena",
+    LoadingTitle    = "Oxyo Hub",
+    LoadingSubtitle = "by mohammad",
+    ConfigurationSaving = { Enabled = false },
+    Discord  = { Enabled = false },
+    KeySystem = false,
+})
 
-        pcall(function()
-            local cx = mouse.X
-            local cy = mouse.Y
-            local dx = math.random(-5, 5)
-            local dy = math.random(-5, 5)
-            VIM:SendMouseMoveEvent(cx + dx, cy + dy, game)
-            task.wait(0.07)
-            VIM:SendMouseMoveEvent(cx, cy, game)
-        end)
+local Tab = Window:CreateTab("Main", 4483362458)
 
-        pcall(function()
-            task.wait(0.03)
-            VIM:SendKeyEvent(true,  Enum.KeyCode.W, false, game)
-            task.wait(0.05 + math.random() * 0.05)
-            VIM:SendKeyEvent(false, Enum.KeyCode.W, false, game)
-        end)
+Tab:CreateToggle({
+    Name         = "Kill Aura",
+    CurrentValue = false,
+    Flag         = "KillAura",
+    Callback     = function(v) Flags.KillAura = v end,
+})
 
-        pcall(function()
-            task.wait(math.random() * 0.2)
+Tab:CreateSlider({
+    Name         = "Kill Aura Speed",
+    Range        = {0.005, 0.1},
+    Increment    = 0.005,
+    Suffix       = "s",
+    CurrentValue = 0.015,
+    Flag         = "KillAuraSpeed",
+    Callback     = function(v) KillAuraSpeed = v end,
+})
+
+Tab:CreateToggle({
+    Name         = "Auto Collect Shards",
+    CurrentValue = false,
+    Flag         = "AutoCollect",
+    Callback     = function(v) Flags.AutoCollect = v end,
+})
+
+Tab:CreateToggle({
+    Name         = "Float",
+    CurrentValue = false,
+    Flag         = "Float",
+    Callback     = function(v)
+        Flags.Float = v
+        if not v then
             local char = L.Character
             local hum  = char and char:FindFirstChildOfClass("Humanoid")
-            if hum then
-                hum.Jump = true
-                task.wait(0.08)
-                hum.Jump = false
-            end
-        end)
-    end
-end)
+            if hum then hum.HipHeight = 2 end
+        end
+    end,
+})
 
-task.spawn(function()
-    while true do
-        task.wait(40 + math.random() * 8)
-        pcall(function()
-            local tt = UIS:FindFirstChildOfClass("TouchTransmitter")
-            if tt then
-                tt:Transmit(Vector2.new(
-                    math.random(100, 700),
-                    math.random(100, 500)
-                ), Enum.UserInputType.Touch, Enum.UserInputState.Begin, game)
-                task.wait(0.05)
-                tt:Transmit(Vector2.new(
-                    math.random(100, 700),
-                    math.random(100, 500)
-                ), Enum.UserInputType.Touch, Enum.UserInputState.End, game)
-            end
-        end)
-    end
-end)
 
-task.spawn(function()
-    local ok2, StarterGui = pcall(function()
-        return game:GetService("StarterGui")
-    end)
-    while true do
-        task.wait(30 + math.random() * 10)
-        pcall(function()
-            if ok2 and StarterGui then
-                StarterGui:SetCore("ResetButtonCallback", true)
-            end
-        end)
-    end
-end)
+Tab:CreateToggle({
+    Name         = "Anti AFK",
+    CurrentValue = false,
+    Flag         = "AntiAFK",
+    Callback     = function(v) Flags.AntiAFK = v end,
+})
 
-task.spawn(function()
-    while true do
-        task.wait(12 + math.random() * 5)
-        pcall(function()
-            local char = L.Character
-            local hum  = char and char:FindFirstChildOfClass("Humanoid")
-            if hum then
-                hum.WalkSpeed = hum.WalkSpeed
-            end
-        end)
-    end
-end)
+Tab:CreateToggle({
+    Name         = "Auto Equip",
+    CurrentValue = false,
+    Flag         = "AutoEquip",
+    Callback     = function(v) Flags.AutoEquip = v end,
+})
 
-print("[OXYO] La Osama - loaded ✅")
+print("[OXYO] loaded")
